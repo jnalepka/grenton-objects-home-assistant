@@ -1,8 +1,8 @@
 """
 ==================================================
 Author: Jan Nalepka
-Script version: 3.3
-Date: 20.10.2025
+Script version: 3.4
+Date: 09.01.2026
 Repository: https://github.com/jnalepka/grenton-objects-home-assistant
 ==================================================
 """
@@ -126,7 +126,6 @@ class GrentonSensor(SensorEntity):
         self._grenton_id = grenton_id
         self._grenton_type = grenton_type
         self._object_name = object_name
-        self._unique_id = f"grenton_{grenton_id.split('->')[1] if '->' in grenton_id else grenton_id}"
         self._native_value = None
         self._native_unit_of_measurement = unit_of_measurement
         self._device_class = device_class
@@ -135,6 +134,11 @@ class GrentonSensor(SensorEntity):
         self._update_interval = update_interval
         self._unsub_interval = None
         self._initialized = False
+
+        if self._grenton_type == CONF_GRENTON_TYPE_RELAY_POWER:
+            self._unique_id = f"grenton_{grenton_id.split('->')[1]}_POWER"
+        else:
+            self._unique_id = f"grenton_{grenton_id.split('->')[1] if '->' in grenton_id else grenton_id}"
 
     async def async_added_to_hass(self):
         self._initialized = True

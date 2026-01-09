@@ -1,8 +1,8 @@
 """
 ==================================================
 Author: Jan Nalepka
-Script version: 3.7
-Date: 29.10.2025
+Script version: 3.8
+Date: 09.01.2025
 Repository: https://github.com/jnalepka/grenton-objects-home-assistant
 ==================================================
 """
@@ -18,6 +18,7 @@ from .const import (
     CONF_GRENTON_TYPE,
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_DEFAULT_SENSOR,
+    CONF_GRENTON_TYPE_RELAY_POWER,
     CONF_DEVICE_CLASS,
     CONF_STATE_CLASS,
     CONF_REVERSED,
@@ -34,7 +35,9 @@ from .const import (
 from .options_flow import GrentonOptionsFlowHandler
 from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 from homeassistant.components.cover import CoverDeviceClass
+import logging
 
+_LOGGER = logging.getLogger(__name__)
 
 class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -84,12 +87,13 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             existing_id = entry.data.get(CONF_GRENTON_ID)
             existing_type = entry.data.get(CONF_GRENTON_TYPE)
 
-            if existing_id == grenton_id and existing_type == grenton_type:
+            if existing_type == CONF_GRENTON_TYPE_RELAY_POWER or grenton_type == CONF_GRENTON_TYPE_RELAY_POWER:
+                if existing_id == grenton_id and existing_type == grenton_type:
+                    return True
+            elif existing_id == grenton_id and existing_type == grenton_type:
                 return True
-
-            if grenton_type not in LIGHT_GRENTON_TYPE_LED and existing_id == grenton_id:
+            elif grenton_type not in LIGHT_GRENTON_TYPE_LED and existing_id == grenton_id:
                 return True
-
         return False
 
     async def async_step_light_config(self, user_input=None):
@@ -201,7 +205,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=self._get_device_schema(user_input)
             )
         
-        if self._is_duplicate_grenton_id(user_input[CONF_GRENTON_ID]):
+        if self._is_duplicate_grenton_id(user_input[CONF_GRENTON_ID], user_input[CONF_GRENTON_TYPE]):
             return self.async_show_form(
                 step_id="sensor_config",
                 data_schema=self._get_device_schema(user_input),
