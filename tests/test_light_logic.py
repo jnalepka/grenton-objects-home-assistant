@@ -515,3 +515,81 @@ async def test_async_update_rgb_zwave(monkeypatch):
     assert obj.brightness == 255
     assert obj.rgb_color == [255, 255, 255]
     assert obj.unique_id == "grenton_ZWA0000"
+
+# DALI_GEAR tests
+
+@pytest.mark.asyncio
+async def test_async_turn_on_dali_gear(monkeypatch):
+    captured_command = {}
+    obj, FakeSession = create_obj(grenton_id="CLU221006120->DAL1403", grenton_type="DALI_GEAR", response_data={"status": 200}, captured_command=captured_command)
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    await obj.async_turn_on()
+
+    assert captured_command["value"] == {
+        "command": "CLU221006120:execute(0, 'DAL1403:execute(0, 254)')"
+    }
+    assert obj.is_on
+    assert obj._state == STATE_ON
+    assert obj.brightness == 255
+    assert obj._last_command_time == 123.456
+    assert obj.unique_id == "grenton_DAL1403"
+
+@pytest.mark.asyncio
+async def test_async_turn_on_dali_gear_with_brightness(monkeypatch):
+    captured_command = {}
+    obj, FakeSession = create_obj(grenton_id="CLU221006120->DAL1403", grenton_type="DALI_GEAR", response_data={"status": 128}, captured_command=captured_command)
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    await obj.async_turn_on(brightness=128)
+
+    assert captured_command["value"] == {
+        "command": "CLU221006120:execute(0, 'DAL1403:execute(0, 128)')"
+    }
+    assert obj.is_on
+    assert obj._state == STATE_ON
+    assert obj.brightness == 128
+    assert obj._last_command_time == 123.456
+
+@pytest.mark.asyncio
+async def test_async_turn_off_dali_gear(monkeypatch):
+    captured_command = {}
+    obj, FakeSession = create_obj(grenton_id="CLU221006120->DAL1403", grenton_type="DALI_GEAR", response_data={"status": 0}, captured_command=captured_command)
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    await obj.async_turn_off()
+
+    assert captured_command["value"] == {
+        "command": "CLU221006120:execute(0, 'DAL1403:execute(2, 0)')"
+    }
+    assert not obj.is_on
+    assert obj._state == STATE_OFF
+    assert obj._last_command_time == 123.456
+    assert obj.unique_id == "grenton_DAL1403"
+
+@pytest.mark.asyncio
+async def test_async_update_dali_gear_on(monkeypatch):
+    captured_command = {}
+    obj, FakeSession = create_obj(grenton_id="CLU221006120->DAL1403", grenton_type="DALI_GEAR", response_data={"status": 200}, captured_command=captured_command)
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    await obj.async_update()
+
+    assert captured_command["value"] == {
+        "status": "return CLU221006120:execute(0, 'DAL1403:get(2)')"
+    }
+    assert obj.is_on
+    assert obj._state == STATE_ON
+    assert obj.brightness == 200
+    assert obj.unique_id == "grenton_DAL1403"
+
+@pytest.mark.asyncio
+async def test_async_update_dali_gear_off(monkeypatch):
+    captured_command = {}
+    obj, FakeSession = create_obj(grenton_id="CLU221006120->DAL1403", grenton_type="DALI_GEAR", response_data={"status": 0}, captured_command=captured_command)
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    await obj.async_update()
+
+    assert captured_command["value"] == {
+        "status": "return CLU221006120:execute(0, 'DAL1403:get(2)')"
+    }
+    assert not obj.is_on
+    assert obj._state == STATE_OFF
+    assert obj.brightness == 0
+    assert obj.unique_id == "grenton_DAL1403"

@@ -21,8 +21,9 @@ from .const import (
     CONF_GRENTON_TYPE_LED_G,
     CONF_GRENTON_TYPE_LED_B,
     CONF_GRENTON_TYPE_LED_W,
+    CONF_GRENTON_TYPE_DALI_GEAR,
     CONF_AUTO_UPDATE,
-    CONF_UPDATE_INTERVAL, 
+    CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     LIGHT_GRENTON_TYPE_LED,
@@ -225,6 +226,7 @@ class GrentonLight(LightEntity):
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4, "param": brightness},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5, "param": brightness},
                 CONF_GRENTON_TYPE_LED_W: {"action": "execute", "index": 12, "param": brightness},
+                CONF_GRENTON_TYPE_DALI_GEAR: {"action": "execute", "index": 0, "param": brightness},
             }
             white = kwargs.get("white")
 
@@ -233,6 +235,9 @@ class GrentonLight(LightEntity):
             if self._grenton_type in command_brightness_mapping:
                 if grenton_id_part_1.startswith("ZWA"):
                     command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, "execute", 0, brightness)
+                elif self._grenton_type == CONF_GRENTON_TYPE_DALI_GEAR:
+                    dali_value = min(int(brightness), 254)
+                    command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, "execute", 0, dali_value)
                 else:
                     config = command_brightness_mapping[self._grenton_type]
                     command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, config["action"], config["index"], config["param"])
@@ -306,6 +311,7 @@ class GrentonLight(LightEntity):
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5},
                 CONF_GRENTON_TYPE_LED_W: {"action": "execute", "index": 12},
+                CONF_GRENTON_TYPE_DALI_GEAR: {"action": "execute", "index": 2},
             }
             
             if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
@@ -348,6 +354,7 @@ class GrentonLight(LightEntity):
                 CONF_GRENTON_TYPE_LED_G: 4,
                 CONF_GRENTON_TYPE_LED_B: 5,
                 CONF_GRENTON_TYPE_LED_W: 15,
+                CONF_GRENTON_TYPE_DALI_GEAR: 2,
             }
             
             if self._grenton_type in xml_index__mapping:
@@ -377,6 +384,9 @@ class GrentonLight(LightEntity):
                             self._brightness = data.get("status") * 255
                             self._last_brightness = data.get("status") * 255
                     elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W:
+                        self._brightness = data.get("status")
+                        self._last_brightness = data.get("status")
+                    elif self._grenton_type == CONF_GRENTON_TYPE_DALI_GEAR:
                         self._brightness = data.get("status")
                         self._last_brightness = data.get("status")
                     

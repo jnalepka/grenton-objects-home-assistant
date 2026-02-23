@@ -10,7 +10,7 @@
       },
       "light_config": {
         "title": "Typ urządzenia: Światło",
-        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Jeśli chcesz sterować pojedynczym kanałem z obiektu RGBW, wybierz odpowiednio typ LED_R/G/B/W.",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Jeśli chcesz sterować pojedynczym kanałem z obiektu RGBW, wybierz odpowiednio typ LED_R/G/B/W.\n\nUwaga! Dla DALI wybierz typ DALI_GEAR i wpisz ID obiektu DALI_GEAR (np. CLU220000000->DAL1403).",
         "data": {
           "name": "Nazwa obiektu",
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
@@ -115,7 +115,7 @@
   "selector": {
     "device_type": {
       "options": {
-        "light": "Światło – DOUT / DIMMER / LED / ZWAVE",
+        "light": "Światło – DOUT / DIMMER / LED / ZWAVE / DALI",
         "switch": "Przełącznik – DOUT / ZWAVE",
         "cover": "Rolety – ROLLER_SHUTTER / ZWAVE",
         "climate": "Klimat – THERMOSTAT",
