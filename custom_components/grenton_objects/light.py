@@ -14,6 +14,7 @@ from .const import (
     CONF_OBJECT_NAME,
     CONF_GRENTON_TYPE,
     CONF_GRENTON_TYPE_DIMMER,
+    CONF_GRENTON_TYPE_DALI,
     CONF_GRENTON_TYPE_RGB,
     CONF_GRENTON_TYPE_RGBW,
     CONF_GRENTON_TYPE_DOUT,
@@ -45,7 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_API_ENDPOINT): str,
     vol.Required(CONF_GRENTON_ID): str,
-    vol.Required(CONF_GRENTON_TYPE, default=CONF_GRENTON_TYPE_DOUT): str, #DOUT, DIMMER, RGB, RGBW, LED_R, LED_G, LED_B, LED_W
+    vol.Required(CONF_GRENTON_TYPE, default=CONF_GRENTON_TYPE_DOUT): str, #DOUT, DALI, DIMMER, RGB, RGBW, LED_R, LED_G, LED_B, LED_W
     vol.Optional(CONF_OBJECT_NAME, default='Grenton Light'): str
 })
 
@@ -123,6 +124,14 @@ class GrentonLight(LightEntity):
         self.async_write_ha_state()
 
     async def async_force_brightness(self, brightness: float):
+        if self._grenton_type == CONF_GRENTON_TYPE_DALI:
+            dali_brightness = self._normalize_dali_brightness(brightness)
+            self._state = STATE_OFF if dali_brightness == 0 else STATE_ON
+            self._brightness = self._dali_to_ha_brightness(dali_brightness)
+            self._last_brightness = self._brightness
+            self.async_write_ha_state()
+            return
+
         self._state = STATE_OFF if brightness == 0 else STATE_ON
         grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
         if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
@@ -212,6 +221,30 @@ class GrentonLight(LightEntity):
         return {
             command_type: f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:{action}({xml_index})')"
         }
+
+    @staticmethod
+    def _ha_to_dali_brightness(brightness: float | int) -> int:
+        value = float(brightness)
+        if value <= 1:
+            value = value * 255
+        value = max(0.0, min(255.0, value))
+        return int(round(value * 254 / 255))
+
+    @staticmethod
+    def _normalize_dali_brightness(brightness: float | int) -> int:
+        value = float(brightness)
+        if value <= 1:
+            return int(round(max(0.0, value) * 254))
+        if value <= 254:
+            return int(round(value))
+        return 254
+
+    @staticmethod
+    def _dali_to_ha_brightness(dali_brightness: float | int) -> int:
+        value = max(0.0, min(254.0, float(dali_brightness)))
+        if value == 0:
+            return 0
+        return int(round(value * 255 / 254))
         
     async def async_turn_on(self, **kwargs):
         try:
@@ -230,7 +263,14 @@ class GrentonLight(LightEntity):
 
             # _LOGGER.info("[GrentonLight] turn_on | kwargs=%s", kwargs)
             
-            if self._grenton_type in command_brightness_mapping:
+            if self._grenton_type == CONF_GRENTON_TYPE_DALI:
+                dali_brightness = self._ha_to_dali_brightness(brightness)
+                command = {
+                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, {dali_brightness})')"
+                }
+                self._brightness = self._dali_to_ha_brightness(dali_brightness)
+                self._last_brightness = self._brightness
+            elif self._grenton_type in command_brightness_mapping:
                 if grenton_id_part_1.startswith("ZWA"):
                     command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, "execute", 0, brightness)
                 else:
@@ -302,6 +342,7 @@ class GrentonLight(LightEntity):
                 CONF_GRENTON_TYPE_RGB: {"action": "execute", "index": 0},
                 CONF_GRENTON_TYPE_DIMMER: {"action": "set", "index": 0},
                 CONF_GRENTON_TYPE_DOUT: {"action": "set", "index": 0},
+                CONF_GRENTON_TYPE_DALI: {"action": "execute", "index": 1},
                 CONF_GRENTON_TYPE_LED_R: {"action": "execute", "index": 3},
                 CONF_GRENTON_TYPE_LED_G: {"action": "execute", "index": 4},
                 CONF_GRENTON_TYPE_LED_B: {"action": "execute", "index": 5},
@@ -319,7 +360,12 @@ class GrentonLight(LightEntity):
                 else:
                     config = command_mapping.get(CONF_GRENTON_TYPE_RGB, {"action": "set", "index": 0})
             
-            command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, config["action"], config["index"], 0)
+            if self._grenton_type == CONF_GRENTON_TYPE_DALI:
+                command = {
+                    "command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, 0)')"
+                }
+            else:
+                command = self._generate_command("command", grenton_id_part_0, grenton_id_part_1, config["action"], config["index"], 0)
             self._last_brightness = self._brightness
             self._state = STATE_OFF
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
@@ -343,6 +389,7 @@ class GrentonLight(LightEntity):
             xml_index__mapping = {
                 CONF_GRENTON_TYPE_RGB: 0,
                 CONF_GRENTON_TYPE_DOUT: 0,
+                CONF_GRENTON_TYPE_DALI: 2,
                 CONF_GRENTON_TYPE_DIMMER: 0,
                 CONF_GRENTON_TYPE_LED_R: 3,
                 CONF_GRENTON_TYPE_LED_G: 4,
@@ -376,6 +423,10 @@ class GrentonLight(LightEntity):
                         else:
                             self._brightness = data.get("status") * 255
                             self._last_brightness = data.get("status") * 255
+                    elif self._grenton_type == CONF_GRENTON_TYPE_DALI:
+                        dali_brightness = self._normalize_dali_brightness(data.get("status"))
+                        self._brightness = self._dali_to_ha_brightness(dali_brightness)
+                        self._last_brightness = self._brightness
                     elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W:
                         self._brightness = data.get("status")
                         self._last_brightness = data.get("status")
