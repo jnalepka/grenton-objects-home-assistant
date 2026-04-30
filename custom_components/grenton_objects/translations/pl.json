@@ -22,11 +22,12 @@
       },
       "switch_config": {
         "title": "Typ urządzenia: Przełącznik",
-        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.\n\nUwaga! Użyj DOUT dla standardowych przekaźników lub PANEL_BUTTON_LED dla diod LED przycisków panelowych.",
         "data": {
           "name": "Nazwa obiektu",
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
           "grenton_id": "ID obiektu Grenton",
+          "grenton_type": "Typ obiektu Grenton",
           "auto_update": "Automatyczna aktualizacja obiektu",
           "update_interval": "Okres odświeżania (w sekundach)"
         }
@@ -88,6 +89,18 @@
           "api_endpoint": "Adres URL do Grenton HTTP Listener",
           "grenton_id": "ID obiektu Grenton"
         }
+      },
+      "satel_config": {
+        "title": "Typ urządzenia: Satel",
+        "description": "Uwaga! Zwróć uwagę, czy adres IP oraz Path w URL są poprawne.\n\n\nUwaga! Wpisz pełne ID obiektu Grenton, które znajduje się we właściwościach obiektu, pod nazwą, w polu Id.",
+        "data": {
+          "name": "Nazwa obiektu",
+          "api_endpoint": "Adres URL do Grenton HTTP Listener",
+          "grenton_id": "ID obiektu Grenton",
+          "satel_type": "Typ Satel",
+          "auto_update": "Automatyczna aktualizacja obiektu",
+          "update_interval": "Okres odświeżania (w sekundach)"
+        }
       }
     },
     "error": {
@@ -121,7 +134,13 @@
         "climate": "Klimat – THERMOSTAT",
         "sensor": "Czujnik – ONE_WIRE / TEMPERATURE / ANALOG IN / MODBUS / ZWAVE / Cecha użytkownika / Inne",
         "binary_sensor": "Czujnik binarny 0/1 – DIN / BINARY_SENSOR / ZWAVE",
-        "button": "Skrypt użytkownika"
+        "button": "Skrypt użytkownika",
+        "satel": "Satel"
+      }
+    },
+    "satel_type": {
+      "options": {
+        "CONTACT": "Contact Sensor"
       }
     },
     "device_class": {

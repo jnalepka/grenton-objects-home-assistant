@@ -22,11 +22,12 @@
       },
       "switch_config": {
         "title": "Device Type: Switch",
-        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.",
+        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.\n\nNote! Use DOUT for standard relay switches, or PANEL_BUTTON_LED for panel button LEDs.",
         "data": {
           "name": "Object Name",
           "api_endpoint": "URL to Grenton HTTP Listener",
           "grenton_id": "Grenton Object ID",
+          "grenton_type": "Grenton Object Type",
           "auto_update": "Automatic Object Updates",
           "update_interval": "Refresh Interval (in seconds)"
         }
@@ -88,6 +89,18 @@
           "api_endpoint": "URL to Grenton HTTP Listener",
           "grenton_id": "Grenton Object ID"
         }
+      },
+      "satel_config": {
+        "title": "Device Type: Satel",
+        "description": "Note! Ensure that the IP address and Path in the URL are correct.\n\n\nNote! Enter the full Grenton object ID, which can be found in the object properties under the name, in the Id field.",
+        "data": {
+          "name": "Object Name",
+          "api_endpoint": "URL to Grenton HTTP Listener",
+          "grenton_id": "Grenton Object ID",
+          "satel_type": "Satel Type",
+          "auto_update": "Automatic Object Updates",
+          "update_interval": "Refresh Interval (in seconds)"
+        }
       }
     },
     "error": {
@@ -121,7 +134,13 @@
         "climate": "Climate – THERMOSTAT",
         "sensor": "Sensor – ONE_WIRE / TEMPERATURE / ANALOG IN / MODBUS / ZWAVE / User Feature / Inne",
         "binary_sensor": "Binary Sensor 0/1 – DIN / BINARY_SENSOR / ZWAVE",
-        "button": "User Script"
+        "button": "User Script",
+        "satel": "Satel"
+      }
+    },
+    "satel_type": {
+      "options": {
+        "CONTACT": "Contact Sensor"
       }
     },
     "device_class": {

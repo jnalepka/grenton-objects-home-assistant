@@ -19,6 +19,7 @@ from .const import (
     CONF_GRENTON_TYPE_DOUT,
     CONF_GRENTON_TYPE_DEFAULT_SENSOR,
     CONF_GRENTON_TYPE_RELAY_POWER,
+    CONF_GRENTON_TYPE_BINARY_SENSOR_DIN,
     CONF_DEVICE_CLASS,
     CONF_STATE_CLASS,
     CONF_REVERSED,
@@ -27,6 +28,8 @@ from .const import (
     STATE_CLASS_OPTIONS,
     LIGHT_GRENTON_TYPE_OPTIONS,
     SENSOR_GRENTON_TYPE_OPTIONS,
+    SWITCH_GRENTON_TYPE_OPTIONS,
+    BINARY_SENSOR_GRENTON_TYPE_OPTIONS,
     LIGHT_GRENTON_TYPE_LED,
     CONF_AUTO_UPDATE,
     CONF_UPDATE_INTERVAL,
@@ -74,7 +77,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return await self.async_step_binary_sensor_config()
         elif self.device_type == "button":
             return await self.async_step_button_config()
-        
+
     def _persist_last_inputs(self, user_input: dict) -> None:
         self.hass.data[f"{DOMAIN}_last_api_endpoint"] = user_input[CONF_API_ENDPOINT]
 
@@ -143,10 +146,11 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_API_ENDPOINT: user_input[CONF_API_ENDPOINT],
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME],
+            CONF_GRENTON_TYPE: user_input[CONF_GRENTON_TYPE],
             CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
             CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
         })
-    
+
     async def async_step_cover_config(self, user_input=None):
         if user_input is None:
             return self.async_show_form(
@@ -247,17 +251,18 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_API_ENDPOINT: user_input[CONF_API_ENDPOINT],
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME],
+            CONF_GRENTON_TYPE: user_input[CONF_GRENTON_TYPE],
             CONF_AUTO_UPDATE: user_input[CONF_AUTO_UPDATE],
             CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL]
         })
-    
+
     async def async_step_button_config(self, user_input=None):
         if user_input is None:
             return self.async_show_form(
                 step_id="button_config",
                 data_schema=self._get_device_schema(user_input)
             )
-        
+
         if self._is_duplicate_grenton_id(user_input[CONF_GRENTON_ID]):
             return self.async_show_form(
                 step_id="button_config",
@@ -273,7 +278,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_GRENTON_ID: user_input[CONF_GRENTON_ID],
             CONF_OBJECT_NAME: user_input[CONF_OBJECT_NAME]
         })
-        
+
     def _get_device_schema(self, user_input=None):
         last_api_endpoint = self.hass.data.get(f"{DOMAIN}_last_api_endpoint", "http://192.168.0.4/HAlistener")
         last_grenton_clu_id = self.hass.data.get(f"{DOMAIN}_last_grenton_clu_id", "CLU220000000")
@@ -294,6 +299,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DOU0000")): str,
+                vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_DOUT)): vol.In(SWITCH_GRENTON_TYPE_OPTIONS),
                 vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })
@@ -345,6 +351,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_OBJECT_NAME, default=defaults.get(CONF_OBJECT_NAME, "")): str,
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->DIN0000")): str,
+                vol.Required(CONF_GRENTON_TYPE, default=defaults.get(CONF_GRENTON_TYPE, CONF_GRENTON_TYPE_BINARY_SENSOR_DIN)): vol.In(BINARY_SENSOR_GRENTON_TYPE_OPTIONS),
                 vol.Required(CONF_AUTO_UPDATE, default=defaults.get(CONF_AUTO_UPDATE, True)): bool,
                 vol.Required(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(vol.Coerce(int), vol.Range(min=5, max=3600))
             })
@@ -354,7 +361,7 @@ class GrentonConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_API_ENDPOINT, default=defaults.get(CONF_API_ENDPOINT, last_api_endpoint)): str,
                 vol.Required(CONF_GRENTON_ID, default=defaults.get(CONF_GRENTON_ID, last_grenton_clu_id + "->script_name")): str
             })
-    
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> GrentonOptionsFlowHandler:

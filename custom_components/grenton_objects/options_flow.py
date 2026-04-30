@@ -18,6 +18,7 @@ from .const import (
     CONF_GRENTON_TYPE,
     LIGHT_GRENTON_TYPE_OPTIONS,
     SENSOR_GRENTON_TYPE_OPTIONS,
+    SWITCH_GRENTON_TYPE_OPTIONS,
     CONF_DEVICE_CLASS
 )
 from homeassistant.components.cover import CoverDeviceClass
@@ -71,6 +72,11 @@ class GrentonOptionsFlowHandler(config_entries.OptionsFlow):
             default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE))
             data_schema = data_schema.extend({
                 vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(SENSOR_GRENTON_TYPE_OPTIONS)
+            })
+        elif device_type == "switch":
+            default_type = self.config_entry.options.get(CONF_GRENTON_TYPE, self.config_entry.data.get(CONF_GRENTON_TYPE, 'DOUT'))
+            data_schema = data_schema.extend({
+                vol.Required(CONF_GRENTON_TYPE, default=default_type): vol.In(SWITCH_GRENTON_TYPE_OPTIONS)
             })
 
         if device_type == "climate":

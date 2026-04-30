@@ -11,9 +11,10 @@ import aiohttp
 from .const import (
     CONF_API_ENDPOINT,
     CONF_GRENTON_ID,
+    CONF_GRENTON_TYPE,
     CONF_OBJECT_NAME,
     CONF_AUTO_UPDATE,
-    CONF_UPDATE_INTERVAL, 
+    CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN
 )
@@ -39,11 +40,12 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 async def async_setup_entry(hass, config_entry, async_add_entities):
     api_endpoint = config_entry.options.get(CONF_API_ENDPOINT, config_entry.data.get(CONF_API_ENDPOINT))
     grenton_id = config_entry.data.get(CONF_GRENTON_ID)
+    grenton_type = config_entry.options.get(CONF_GRENTON_TYPE, config_entry.data.get(CONF_GRENTON_TYPE, 'DOUT'))
     object_name = config_entry.data.get(CONF_OBJECT_NAME)
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
 
-    entity = GrentonSwitch(api_endpoint, grenton_id, object_name, auto_update, update_interval)
+    entity = GrentonSwitch(api_endpoint, grenton_id, grenton_type, object_name, auto_update, update_interval)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -52,9 +54,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
 
 class GrentonSwitch(SwitchEntity):
-    def __init__(self, api_endpoint, grenton_id, object_name, auto_update, update_interval):
+    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, auto_update, update_interval):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
+        self._grenton_type = grenton_type
         self._object_name = object_name
         self._state = None
         self._unique_id = f"grenton_{grenton_id.split('->')[1]}"
@@ -102,7 +105,10 @@ class GrentonSwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 1)')"}
+            if self._grenton_type == 'PANEL_BUTTON_LED':
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(1, 2)')"}
+            else:
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 1)')"}
             self._state = STATE_ON
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
@@ -116,7 +122,10 @@ class GrentonSwitch(SwitchEntity):
     async def async_turn_off(self, **kwargs):
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 0)')"}
+            if self._grenton_type == 'PANEL_BUTTON_LED':
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:execute(2, 4)')"}
+            else:
+                command = {"command": f"{grenton_id_part_0}:execute(0, '{grenton_id_part_1}:set(0, 0)')"}
             self._state = STATE_OFF
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
@@ -136,7 +145,10 @@ class GrentonSwitch(SwitchEntity):
             
         try:
             grenton_id_part_0, grenton_id_part_1 = self._grenton_id.split('->')
-            command = {"status": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(0)')"}
+            if self._grenton_type == 'PANEL_BUTTON_LED':
+                command = {"status": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(1)')"}
+            else:
+                command = {"status": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(0)')"}
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self._api_endpoint}", json=command) as response:
                     response.raise_for_status()

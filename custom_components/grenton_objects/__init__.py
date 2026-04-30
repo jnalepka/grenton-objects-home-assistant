@@ -234,7 +234,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     device = config_entry.data
     platform = device["device_type"]
     if platform:
-        await hass.config_entries.async_forward_entry_setups(config_entry, {platform})
+        await hass.config_entries.async_forward_entry_setups(config_entry, [platform])
     return True
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
