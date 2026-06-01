@@ -11,12 +11,12 @@ import aiohttp
 import logging
 import voluptuous as vol
 from homeassistant.components.button import ButtonEntity
-from homeassistant.helpers.entity import Entity
 from .const import (
     CONF_API_ENDPOINT,
     CONF_GRENTON_ID,
     CONF_OBJECT_NAME
 )
+from .api import get_api_client, GrentonApiError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,15 +31,17 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     grenton_id = config_entry.data.get(CONF_GRENTON_ID)
     object_name = config_entry.data.get(CONF_OBJECT_NAME)
     
-    async_add_entities([GrentonScript(api_endpoint, grenton_id, object_name)], True)
+    api_client = get_api_client(hass, api_endpoint)
+    async_add_entities([GrentonScript(api_endpoint, grenton_id, object_name, api_client)], True)
     
     
 class GrentonScript(ButtonEntity):
-    def __init__(self, api_endpoint, grenton_id, object_name):
+    def __init__(self, api_endpoint, grenton_id, object_name, api_client):
         self._object_name = object_name
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._unique_id = f"grenton_{grenton_id.split('->')[1] if '->' in grenton_id else grenton_id}"
+        self._api_client = api_client
         
 
     @property
@@ -49,7 +51,7 @@ class GrentonScript(ButtonEntity):
     @property
     def unique_id(self):
         return self._unique_id
-    
+ 
     async def async_press(self):
         try:
             if '->' in self._grenton_id:
@@ -61,9 +63,7 @@ class GrentonScript(ButtonEntity):
                 command = {
                     "command": f"{self._grenton_id}(nil)"
                 }
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self._api_endpoint, json=command) as response:
-                    response.raise_for_status()
-                    _LOGGER.info(f"Script {self._object_name} executed successfully (Grenton).")
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to execute script {self._object_name}: {ex}")
+            await self._api_client.send_command(command)
+            _LOGGER.info("Script %s executed successfully (Grenton).", self._object_name)
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to execute script %s: %s", self._object_name, ex)

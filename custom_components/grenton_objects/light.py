@@ -28,6 +28,8 @@ from .const import (
     LIGHT_GRENTON_TYPE_LED,
     LIGHT_GRENTON_TYPE_BRIGHTNESS
 )
+from .api import get_api_client, GrentonApiError
+from .mixins import GrentonPollingMixin, is_within_debounce
 import logging
 import voluptuous as vol
 from homeassistant.components.light import (
@@ -37,8 +39,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.const import (STATE_ON, STATE_OFF)
 from homeassistant.util import color as color_util
-from datetime import timedelta
-from homeassistant.helpers.event import async_track_time_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,7 +57,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
     
-    entity = GrentonLight(api_endpoint, grenton_id, grenton_type, object_name, auto_update, update_interval)
+    api_client = get_api_client(hass, api_endpoint)
+    entity = GrentonLight(api_endpoint, grenton_id, grenton_type, object_name, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -65,12 +66,13 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
 
-class GrentonLight(LightEntity):
-    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, auto_update, update_interval):
+class GrentonLight(GrentonPollingMixin, LightEntity):
+    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, auto_update, update_interval, api_client):
         self._grenton_id = grenton_id
         self._api_endpoint = api_endpoint
         self._grenton_type = grenton_type
         self._object_name = object_name
+        self._api_client = api_client
         self._state = None
         self._supported_color_modes: set[ColorMode | str] = set()
         self._brightness = None
@@ -102,21 +104,6 @@ class GrentonLight(LightEntity):
             self._color_mode = ColorMode.RGB
         else:
             self._supported_color_modes.add(ColorMode.ONOFF)
-
-    async def async_added_to_hass(self):
-        self._initialized = True
-        if self._auto_update:
-            self._unsub_interval = async_track_time_interval(
-                self.hass, self._update_callback, timedelta(seconds=self._update_interval)
-            )
-            await self.async_update()
-
-    async def async_will_remove_from_hass(self):
-        if self._unsub_interval:
-            self._unsub_interval()
-
-    async def _update_callback(self, now):
-        await self.async_update()
 
     async def async_force_state(self, state: int):
         self._state = STATE_ON if state == 1 else STATE_OFF
@@ -289,11 +276,9 @@ class GrentonLight(LightEntity):
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to turn on the light: {ex}")
+            await self._api_client.send_command(command)
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to turn on the light: %s", ex)
             
     async def async_turn_off(self, **kwargs):
         try:
@@ -325,17 +310,15 @@ class GrentonLight(LightEntity):
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to turn off the light: {ex}")
+            await self._api_client.send_command(command)
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to turn off the light: %s", ex)
 
     async def async_update(self):
         if not self._initialized:
             return
         
-        if self._last_command_time and self.hass.loop.time() - self._last_command_time < 2:
+        if is_within_debounce(self._last_command_time, self.hass):
             return
             
         try:
@@ -364,44 +347,53 @@ class GrentonLight(LightEntity):
             if self._grenton_type == CONF_GRENTON_TYPE_RGBW:
                 command.update(self._generate_get_command("status_3", grenton_id_part_0, grenton_id_part_1, "get", 15))
             
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
-                    if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
-                        if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
-                            self._brightness = data.get("status")
-                            self._last_brightness = data.get("status")
-                        else:
-                            self._brightness = data.get("status") * 255
-                            self._last_brightness = data.get("status") * 255
-                    elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W:
-                        self._brightness = data.get("status")
-                        self._last_brightness = data.get("status")
-                    
-                    if self._grenton_type == CONF_GRENTON_TYPE_RGB:
-                        self._rgb_color = color_util.rgb_hex_to_rgb_list(data.get("status_2").strip("#"))
+            data = await self._api_client.get_status(command)
 
-                    #rgbw
-                    if self._grenton_type == CONF_GRENTON_TYPE_RGBW:
-                        if data.get("status_3") > 0:
-                            self._state = STATE_ON
-                            self._color_mode = ColorMode.WHITE
-                            self._white = data.get("status_3")
-                            self._brightness = data.get("status_3")
-                            self._last_brightness = data.get("status_3")
-                        elif data.get("status") > 0:
-                            self._state = STATE_ON
-                            self._color_mode = ColorMode.RGB
-                            self._rgb_color = color_util.rgb_hex_to_rgb_list(data.get("status_2").strip("#"))
-                            self._brightness = data.get("status") * 255
-                            self._last_brightness = data.get("status") * 255
-                        else:
-                            self._state = STATE_OFF
+            if is_within_debounce(self._last_command_time, self.hass):
+                return
 
-                    self.async_write_ha_state()
+            self._state = STATE_OFF if data.get("status") == 0 else STATE_ON
+            if self._grenton_type == CONF_GRENTON_TYPE_RGB or self._grenton_type == CONF_GRENTON_TYPE_DIMMER:
+                if self._grenton_type == CONF_GRENTON_TYPE_DIMMER and grenton_id_part_1.startswith("ZWA"):
+                    self._brightness = data.get("status")
+                    self._last_brightness = data.get("status")
+                else:
+                    self._brightness = data.get("status") * 255
+                    self._last_brightness = data.get("status") * 255
+            elif self._grenton_type == CONF_GRENTON_TYPE_LED_R or self._grenton_type == CONF_GRENTON_TYPE_LED_G or self._grenton_type == CONF_GRENTON_TYPE_LED_B or self._grenton_type == CONF_GRENTON_TYPE_LED_W:
+                self._brightness = data.get("status")
+                self._last_brightness = data.get("status")
+            
+            if self._grenton_type == CONF_GRENTON_TYPE_RGB:
+                rgb_hex = data.get("status_2")
+                if rgb_hex:
+                    self._rgb_color = color_util.rgb_hex_to_rgb_list(rgb_hex.strip("#"))
 
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to update the light state: {ex}")
+            #rgbw
+            if self._grenton_type == CONF_GRENTON_TYPE_RGBW:
+                status_3 = data.get("status_3")
+                if status_3 is not None and status_3 > 0:
+                    self._state = STATE_ON
+                    self._color_mode = ColorMode.WHITE
+                    self._white = status_3
+                    self._brightness = status_3
+                    self._last_brightness = status_3
+                elif data.get("status") is not None and data.get("status") > 0:
+                    self._state = STATE_ON
+                    self._color_mode = ColorMode.RGB
+                    rgb_hex = data.get("status_2")
+                    if rgb_hex:
+                        self._rgb_color = color_util.rgb_hex_to_rgb_list(rgb_hex.strip("#"))
+                    self._brightness = data.get("status") * 255
+                    self._last_brightness = data.get("status") * 255
+                else:
+                    self._state = STATE_OFF
+
+            self.async_write_ha_state()
+
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to update the light state: %s", ex)
+            self._state = None
+        except (AttributeError, TypeError, ValueError) as ex:
+            _LOGGER.error("Unexpected data in light state response: %s", ex)
             self._state = None

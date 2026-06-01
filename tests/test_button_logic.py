@@ -1,42 +1,27 @@
 import pytest
 from custom_components.grenton_objects.button import GrentonScript
+from tests.helpers import MockApiClient, MockHass
 
-def create_obj(grenton_id="my_script", response_data={"status": "ok"}, captured_command=None):
+
+def create_obj(grenton_id="my_script", response_data=None, captured_command=None):
+    if response_data is None:
+        response_data = {"status": "ok"}
+    api_client = MockApiClient(response_data=response_data, captured_command=captured_command)
     obj = GrentonScript(
         api_endpoint="http://fake-api",
         grenton_id=grenton_id,
-        object_name="Test Script"
+        object_name="Test Script",
+        api_client=api_client
     )
-
-    class MockHass:
-        def async_add_job(self, *args, **kwargs): pass
     obj.hass = MockHass()
     obj.async_write_ha_state = lambda: None
 
-    class FakeResponse:
-        async def json(self): return response_data
-        def raise_for_status(self): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-
-    class FakeSession:
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        def post(self, url, json):
-            captured_command["value"] = json
-            return FakeResponse()
-        def get(self, url, json):
-            if captured_command is not None:
-                captured_command["value"] = json
-            return FakeResponse()
-
-    return obj, FakeSession
+    return obj
 
 @pytest.mark.asyncio
-async def test_async_script_local(monkeypatch):
+async def test_async_script_local():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_press()
 
     assert captured_command["value"] == {
@@ -45,10 +30,9 @@ async def test_async_script_local(monkeypatch):
     assert obj.unique_id == "grenton_my_script"
 
 @pytest.mark.asyncio
-async def test_async_script_remote(monkeypatch):
+async def test_async_script_remote():
     captured_command = {}
-    obj, FakeSession = create_obj(grenton_id="CLU220000000->my_script_2", response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(grenton_id="CLU220000000->my_script_2", response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_press()
 
     assert captured_command["value"] == {

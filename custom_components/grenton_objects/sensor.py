@@ -30,6 +30,8 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN
 )
+from .api import get_api_client, GrentonApiError
+from .mixins import GrentonPollingMixin
 import logging
 import voluptuous as vol
 import re
@@ -38,8 +40,6 @@ from homeassistant.components.sensor import (
     PLATFORM_SCHEMA
 )
 from homeassistant.const import UnitOfTemperature
-from datetime import timedelta
-from homeassistant.helpers.event import async_track_time_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -111,7 +111,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     auto_update = config_entry.options.get(CONF_AUTO_UPDATE, config_entry.data.get(CONF_AUTO_UPDATE, True))
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
     
-    entity = GrentonSensor(api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, auto_update, update_interval)
+    api_client = get_api_client(hass, api_endpoint)
+    entity = GrentonSensor(api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -120,8 +121,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
     
     
-class GrentonSensor(SensorEntity):
-    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, auto_update, update_interval):
+class GrentonSensor(GrentonPollingMixin, SensorEntity):
+    def __init__(self, api_endpoint, grenton_id, grenton_type, object_name, unit_of_measurement, device_class, state_class, auto_update, update_interval, api_client):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._grenton_type = grenton_type
@@ -134,26 +135,12 @@ class GrentonSensor(SensorEntity):
         self._update_interval = update_interval
         self._unsub_interval = None
         self._initialized = False
+        self._api_client = api_client
 
         if self._grenton_type == CONF_GRENTON_TYPE_RELAY_POWER:
             self._unique_id = f"grenton_{grenton_id.split('->')[1]}_POWER"
         else:
             self._unique_id = f"grenton_{grenton_id.split('->')[1] if '->' in grenton_id else grenton_id}"
-
-    async def async_added_to_hass(self):
-        self._initialized = True
-        if self._auto_update:
-            self._unsub_interval = async_track_time_interval(
-                self.hass, self._update_callback, timedelta(seconds=self._update_interval)
-            )
-            await self.async_update()
-
-    async def async_will_remove_from_hass(self):
-        if self._unsub_interval:
-            self._unsub_interval()
-
-    async def _update_callback(self, now):
-        await self.async_update()
 
     async def async_force_value(self, value: float):
         self._native_value = value
@@ -210,12 +197,9 @@ class GrentonSensor(SensorEntity):
             else:
                 command = {"status": f"return {self._grenton_id.split('->')[0]}:execute(0, 'getVar(\"{self._grenton_id.split('->')[1]}\")')"}
             
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    self._native_value = data.get("status")
-                    self.async_write_ha_state()
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to update the sensor value: {ex}")
+            data = await self._api_client.get_status(command)
+            self._native_value = data.get("status")
+            self.async_write_ha_state()
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to update the sensor value: %s", ex)
             self._native_value = None

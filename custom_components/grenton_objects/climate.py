@@ -12,11 +12,12 @@ from .const import (
     CONF_API_ENDPOINT,
     CONF_GRENTON_ID,
     CONF_OBJECT_NAME,
-    CONF_AUTO_UPDATE,
     CONF_UPDATE_INTERVAL, 
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN
 )
+from .api import get_api_client, GrentonApiError
+from .mixins import GrentonPollingMixin, is_within_debounce
 import logging
 import voluptuous as vol
 from homeassistant.components.climate import (
@@ -26,8 +27,6 @@ from homeassistant.components.climate import (
     ClimateEntityFeature
 )
 from homeassistant.const import UnitOfTemperature
-from datetime import timedelta
-from homeassistant.helpers.event import async_track_time_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +43,8 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     auto_update = True
     update_interval = config_entry.options.get(CONF_UPDATE_INTERVAL, config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
 
-    entity = GrentonClimate(api_endpoint, grenton_id, object_name, auto_update, update_interval)
+    api_client = get_api_client(hass, api_endpoint)
+    entity = GrentonClimate(api_endpoint, grenton_id, object_name, auto_update, update_interval, api_client)
     async_add_entities([entity], True)
 
     if DOMAIN not in hass.data:
@@ -52,10 +52,10 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 
     hass.data[DOMAIN]["entities"][entity.entity_id] = entity
 
-class GrentonClimate(ClimateEntity):
+class GrentonClimate(GrentonPollingMixin, ClimateEntity):
     _enable_turn_on_off_backwards_compatibility = False
     
-    def __init__(self, api_endpoint, grenton_id, object_name, auto_update, update_interval):
+    def __init__(self, api_endpoint, grenton_id, object_name, auto_update, update_interval, api_client):
         self._api_endpoint = api_endpoint
         self._grenton_id = grenton_id
         self._name = object_name
@@ -71,21 +71,7 @@ class GrentonClimate(ClimateEntity):
         self._update_interval = update_interval
         self._unsub_interval = None
         self._initialized = False
-
-    async def async_added_to_hass(self):
-        self._initialized = True
-        if self._auto_update:
-            self._unsub_interval = async_track_time_interval(
-                self.hass, self._update_callback, timedelta(seconds=self._update_interval)
-            )
-            await self.async_update()
-
-    async def async_will_remove_from_hass(self):
-        if self._unsub_interval:
-            self._unsub_interval()
-
-    async def _update_callback(self, now):
-        await self.async_update()
+        self._api_client = api_client
 
     async def async_force_therm_state(self, state: int, direction: int):
         self._hvac_mode = HVACMode.OFF if state == 0 else (HVACMode.COOL if direction == 1 else HVACMode.HEAT)
@@ -102,10 +88,6 @@ class GrentonClimate(ClimateEntity):
     @property
     def name(self):
         return self._name
-
-    @property
-    def should_poll(self):
-        return True
 
     @property
     def temperature_unit(self):
@@ -150,11 +132,9 @@ class GrentonClimate(ClimateEntity):
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to set the climate temperature: {ex}")
+            await self._api_client.send_command(command)
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to set the climate temperature: %s", ex)
 
     async def async_set_hvac_mode(self, hvac_mode):
         try:
@@ -170,18 +150,16 @@ class GrentonClimate(ClimateEntity):
             self._last_command_time = self.hass.loop.time() if self.hass is not None else None
             self.async_write_ha_state()
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to set the climate hvac_mode: {ex}")
+            await self._api_client.send_command(command)
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to set the climate hvac_mode: %s", ex)
         
 
     async def async_update(self):
         if not self._initialized:
             return
         
-        if self._last_command_time and self.hass.loop.time() - self._last_command_time < 2:
+        if is_within_debounce(self._last_command_time, self.hass):
             return
         
         try:
@@ -190,14 +168,14 @@ class GrentonClimate(ClimateEntity):
             command.update({"status_2": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(7)')"})
             command.update({"status_3": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(12)')"})
             command.update({"status_4": f"return {grenton_id_part_0}:execute(0, '{grenton_id_part_1}:get(14)')"})
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self._api_endpoint}", json=command) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    self._hvac_mode = HVACMode.OFF if data.get("status") == 0 else (HVACMode.COOL if data.get("status_2") == 1 else HVACMode.HEAT)
-                    self._target_temperature = data.get("status_3")
-                    self._current_temperature = data.get("status_4")
-                    self.async_write_ha_state()
-        except aiohttp.ClientError as ex:
-            _LOGGER.error(f"Failed to update the climate state: {ex}")
-            self._hvac_mode = HVACMode.OFF
+            data = await self._api_client.get_status(command)
+
+            if is_within_debounce(self._last_command_time, self.hass):
+                return
+
+            self._hvac_mode = HVACMode.OFF if data.get("status") == 0 else (HVACMode.COOL if data.get("status_2") == 1 else HVACMode.HEAT)
+            self._target_temperature = data.get("status_3")
+            self._current_temperature = data.get("status_4")
+            self.async_write_ha_state()
+        except (aiohttp.ClientError, GrentonApiError) as ex:
+            _LOGGER.error("Failed to update the climate state: %s", ex)

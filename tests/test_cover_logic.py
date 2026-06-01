@@ -1,14 +1,18 @@
 import pytest
 from custom_components.grenton_objects.cover import GrentonCover
 from homeassistant.const import (
-    STATE_CLOSED,
     STATE_CLOSING,
     STATE_OPEN,
     STATE_OPENING
 )
 from homeassistant.components.cover import CoverDeviceClass
+from tests.helpers import MockApiClient, MockHass
 
-def create_obj(grenton_id="CLU220000000->ROL0000", response_data={"status": "ok"}, captured_command=None, reversed=False):
+
+def create_obj(grenton_id="CLU220000000->ROL0000", response_data=None, captured_command=None, reversed=False):
+    if response_data is None:
+        response_data = {"status": "ok"}
+    api_client = MockApiClient(response_data=response_data, captured_command=captured_command)
     obj = GrentonCover(
         api_endpoint="http://fake-api",
         grenton_id=grenton_id,
@@ -16,44 +20,19 @@ def create_obj(grenton_id="CLU220000000->ROL0000", response_data={"status": "ok"
         object_name="Test obj",
         auto_update=False,
         update_interval=5,
-        device_class = CoverDeviceClass.BLIND.value
+        device_class = CoverDeviceClass.BLIND.value,
+        api_client=api_client
     )
     obj._initialized = True
-
-    class MockLoop:
-        def time(self):
-            return 123.456
-
-    class MockHass:
-        def async_add_job(self, *args, **kwargs): pass
-        loop = MockLoop()
     obj.hass = MockHass()
     obj.async_write_ha_state = lambda: None
 
-    class FakeResponse:
-        async def json(self): return response_data
-        def raise_for_status(self): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-
-    class FakeSession:
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        def post(self, url, json):
-            captured_command["value"] = json
-            return FakeResponse()
-        def get(self, url, json):
-            if captured_command is not None:
-                captured_command["value"] = json
-            return FakeResponse()
-
-    return obj, FakeSession
+    return obj
 
 @pytest.mark.asyncio
-async def test_async_open_cover(monkeypatch):
+async def test_async_open_cover():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_open_cover()
 
     assert captured_command["value"] == {
@@ -65,10 +44,9 @@ async def test_async_open_cover(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_close_cover(monkeypatch):
+async def test_async_close_cover():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_close_cover()
 
     assert captured_command["value"] == {
@@ -80,10 +58,9 @@ async def test_async_close_cover(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_stop_cover(monkeypatch):
+async def test_async_stop_cover():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_stop_cover()
 
     assert captured_command["value"] == {
@@ -94,10 +71,9 @@ async def test_async_stop_cover(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_set_cover_position(monkeypatch):
+async def test_async_set_cover_position():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_set_cover_position(position=100)
 
     assert captured_command["value"] == {
@@ -109,10 +85,9 @@ async def test_async_set_cover_position(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_set_cover_position_reversed(monkeypatch):
+async def test_async_set_cover_position_reversed():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command, reversed = True)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command, reversed = True)
     await obj.async_set_cover_position(position=100)
 
     assert captured_command["value"] == {
@@ -124,10 +99,9 @@ async def test_async_set_cover_position_reversed(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_set_cover_position_zwave(monkeypatch):
+async def test_async_set_cover_position_zwave():
     captured_command = {}
-    obj, FakeSession = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_set_cover_position(position=100)
 
     assert captured_command["value"] == {
@@ -139,10 +113,9 @@ async def test_async_set_cover_position_zwave(monkeypatch):
     assert obj.unique_id == "grenton_ZWA0000"
 
 @pytest.mark.asyncio
-async def test_async_set_cover_position_reversed_zwave(monkeypatch):
+async def test_async_set_cover_position_reversed_zwave():
     captured_command = {}
-    obj, FakeSession = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": "ok"}, captured_command=captured_command, reversed = True)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": "ok"}, captured_command=captured_command, reversed = True)
     await obj.async_set_cover_position(position=100)
 
     assert captured_command["value"] == {
@@ -154,10 +127,9 @@ async def test_async_set_cover_position_reversed_zwave(monkeypatch):
     assert obj.unique_id == "grenton_ZWA0000"
 
 @pytest.mark.asyncio
-async def test_async_set_cover_tilt_position(monkeypatch):
+async def test_async_set_cover_tilt_position():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_set_cover_tilt_position(tilt_position=100)
 
     assert captured_command["value"] == {
@@ -167,10 +139,9 @@ async def test_async_set_cover_tilt_position(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_open_cover_tilt(monkeypatch):
+async def test_async_open_cover_tilt():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_open_cover_tilt()
 
     assert captured_command["value"] == {
@@ -180,10 +151,9 @@ async def test_async_open_cover_tilt(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_close_cover_tilt(monkeypatch):
+async def test_async_close_cover_tilt():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": "ok"}, captured_command=captured_command)
     await obj.async_close_cover_tilt()
 
     assert captured_command["value"] == {
@@ -193,10 +163,9 @@ async def test_async_close_cover_tilt(monkeypatch):
     assert obj.unique_id == "grenton_ROL0000"
 
 @pytest.mark.asyncio
-async def test_async_update(monkeypatch):
+async def test_async_update():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": 1, "status_2": 50, "status_3": 90}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": 1, "status_2": 50, "status_3": 90}, captured_command=captured_command)
     await obj.async_update()
 
     assert captured_command["value"] == {
@@ -208,10 +177,9 @@ async def test_async_update(monkeypatch):
     assert obj.current_cover_tilt_position == 0
 
 @pytest.mark.asyncio
-async def test_async_update_zwave(monkeypatch):
+async def test_async_update_zwave():
     captured_command = {}
-    obj, FakeSession = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": 0, "status_2": 50, "status_3": 90}, captured_command=captured_command)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": 0, "status_2": 50, "status_3": 90}, captured_command=captured_command)
     await obj.async_update()
 
     assert captured_command["value"] == {
@@ -223,10 +191,9 @@ async def test_async_update_zwave(monkeypatch):
     assert obj.current_cover_tilt_position == 0
 
 @pytest.mark.asyncio
-async def test_async_update_reversed(monkeypatch):
+async def test_async_update_reversed():
     captured_command = {}
-    obj, FakeSession = create_obj(response_data={"status": 0, "status_2": 100, "status_3": 90}, captured_command=captured_command, reversed = True)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(response_data={"status": 0, "status_2": 100, "status_3": 90}, captured_command=captured_command, reversed = True)
     await obj.async_update()
 
     assert captured_command["value"] == {
@@ -238,10 +205,9 @@ async def test_async_update_reversed(monkeypatch):
     assert obj.current_cover_tilt_position == 0
 
 @pytest.mark.asyncio
-async def test_async_update_zwave_reversed(monkeypatch):
+async def test_async_update_zwave_reversed():
     captured_command = {}
-    obj, FakeSession = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": 2, "status_2": 100, "status_3": 0}, captured_command=captured_command, reversed = True)
-    monkeypatch.setattr("aiohttp.ClientSession", lambda: FakeSession())
+    obj = create_obj(grenton_id="CLU220000000->ZWA0000", response_data={"status": 2, "status_2": 100, "status_3": 0}, captured_command=captured_command, reversed = True)
     await obj.async_update()
 
     assert captured_command["value"] == {

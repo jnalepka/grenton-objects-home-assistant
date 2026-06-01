@@ -10,7 +10,7 @@ Repository: https://github.com/jnalepka/grenton-objects-home-assistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
-from .const import DOMAIN
+from .const import DOMAIN, CONF_API_ENDPOINT
 from homeassistant.exceptions import ServiceValidationError
 import voluptuous as vol
 from homeassistant.helpers import config_validation as cv
@@ -231,6 +231,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     config_entry.async_on_unload(
         config_entry.add_update_listener(async_update_options)
     )
+
     device = config_entry.data
     platform = device["device_type"]
     if platform:
@@ -241,5 +242,20 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     device_type = config_entry.data.get("device_type")
     if device_type:
         unload_ok = await hass.config_entries.async_unload_platforms(config_entry, [device_type])
+        # Remove cached API client if endpoint is no longer referenced
+        if unload_ok:
+            api_endpoint = config_entry.data.get(CONF_API_ENDPOINT)
+            if api_endpoint:
+                remaining = hass.config_entries.async_entries(DOMAIN)
+                still_used = any(
+                    entry.entry_id != config_entry.entry_id
+                    and entry.data.get(CONF_API_ENDPOINT) == api_endpoint
+                    for entry in remaining
+                )
+                if not still_used:
+                    clients = hass.data.get(DOMAIN, {}).get("clients", {})
+                    client = clients.pop(api_endpoint, None)
+                    if client:
+                        client.close()
         return unload_ok
     return False
